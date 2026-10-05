@@ -1,0 +1,27 @@
+[package]
+name = "usagi-py"
+description = "Python bindings for usagi engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lib]
+name = "usagi"
+crate-type = ["cdylib"]
+# Python loads the library; there is nothing for cargo to run here. The
+# tests are in tests/ and run with pytest.
+test = false
+doctest = false
+
+[dependencies]
+usagi-core.workspace = true
+usagi-engine.workspace = true
+usagi-obs.workspace = true
+numpy = "0.25"
+# extension-module: leave Python symbols to the interpreter that loads us,
+# so the crate builds without linking libpython.
+pyo3 = { version = "0.25", features = ["extension-module"] }
+rayon = "1"

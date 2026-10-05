@@ -11,9 +11,29 @@ training environment for bunny bot.
 | `usagi-core` | Tiles, hand parsing, shanten (table-driven, with a slow reference), waits, hand decomposition, yaku, fu and payments. No game state. |
 | `usagi-engine` | The game: wall, dealing, turns, calls, riichi, kans, furiten, abortive draws, scoring and the end of the game. |
 | `usagi-obs` | One seat's observation as fixed-size feature planes (version 1), and a 155-way action numbering with legal-action masks. |
+| `usagi-py` | Python bindings (`import usagi`): `Game`, and `VecEnv` for many games stepped in parallel with NumPy outputs. |
 
-Log parsing and replay, Mjai and the Python bindings come in later
-milestones.
+Log parsing and replay and Mjai come in later milestones.
+
+## Python
+
+```sh
+pip install ./crates/usagi-py      # builds the Rust extension with maturin
+python crates/usagi-py/examples/random_selfplay.py
+```
+
+```python
+import usagi as mj
+
+env = mj.VecEnv(1024, seed=0)           # 1024 games on Rust threads
+seats, planes, scalars, scores, masks = env.observe()
+actions = policy(planes, scalars, masks)  # one action index per game
+done, final_scores = env.step(actions)  # finished games restart
+```
+
+`Game` steps one game a seat at a time and can be copied for search.
+Observations and action indices follow `usagi-obs`; type stubs ship
+with the package.
 
 ## Using the engine
 
