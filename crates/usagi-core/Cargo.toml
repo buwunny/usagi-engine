@@ -11,4 +11,9 @@ rust-version.workspace = true
 [dependencies]
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
+
+[[bench]]
+name = "core"
+harness = false
