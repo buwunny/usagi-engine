@@ -64,6 +64,12 @@ pub struct Report {
     /// The log stops partway through its last hand (an excerpt); that
     /// hand was checked up to where it stops.
     pub truncated: bool,
+    /// Hands that didn't match and in which a player disconnected. These
+    /// aren't counted as mismatches: Tenhou's play for a disconnected
+    /// player doesn't follow the rules (its discard right after a call
+    /// can break kuikae, and a disconnected player gets no nagashi
+    /// mangan).
+    pub disconnected: Vec<Mismatch>,
 }
 
 impl Report {
@@ -165,7 +171,11 @@ pub fn replay_with(game: &Game, opts: Options, on: &mut dyn FnMut(ReplayEvent)) 
             hand: h,
             ended: matches!(result, Ok(Some(_))),
         });
+        let disconnect = events
+            .iter()
+            .any(|e| matches!(e, LogEvent::Disconnect { .. }));
         match result {
+            Err((event, message)) if disconnect => report.disconnected.push(at(event + 1, message)),
             Err((event, message)) => report.mismatches.push(at(event + 1, message)),
             Ok(None) if h + 1 == hands.len() => report.truncated = true,
             Ok(None) => report
@@ -396,7 +406,13 @@ fn replay_hand(
             LogEvent::Discard { seat, tile } => {
                 let t = tile_of(*tile, red);
                 let s = *seat as usize;
-                let a = if riichi_next[s] {
+                // A few logs write the riichi declaration just after its
+                // discard instead of before it.
+                let late_riichi = matches!(
+                    events.get(i + 1),
+                    Some(LogEvent::Riichi { seat: r, step: 1 }) if r == seat
+                );
+                let a = if riichi_next[s] || late_riichi {
                     Action::Riichi(t)
                 } else {
                     Action::Discard(t)
@@ -405,11 +421,13 @@ fn replay_hand(
                 act(&mut g, *seat, a, &mut out, on)?;
             }
             LogEvent::Riichi { seat, step } => {
-                if *step == 1 {
+                let late = i > 0
+                    && matches!(&events[i - 1], LogEvent::Discard { seat: d, .. } if d == seat);
+                if *step == 1 && !late {
                     riichi_next[*seat as usize] = true;
                 }
             }
-            LogEvent::Dora { .. } => {}
+            LogEvent::Dora { .. } | LogEvent::Disconnect { .. } => {}
             LogEvent::Call { seat, call } => {
                 let hand: Vec<u8> = call
                     .from_hand()
@@ -498,7 +516,10 @@ fn replay_hand(
             over = true;
         }
         if over {
-            if let Some(extra) = events.get(i + 1) {
+            if let Some(extra) = events[i + 1..]
+                .iter()
+                .find(|e| !matches!(e, LogEvent::Disconnect { .. }))
+            {
                 return Err((i + 1, format!("event after the hand ended: {extra:?}")));
             }
             return Ok(Some(g));

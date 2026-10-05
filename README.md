@@ -61,7 +61,9 @@ cargo run --release -p usagi-log --bin usagi-replay -- data/tenhou-original-xml.
 
 `--save DIR` writes every log that doesn't match to `DIR` for a closer
 look. Logs from before June 2010 are replayed with that era's game-end
-rule (no all-last dealer stop). Tenhou's logs are theirs: keep them under
+rule (no all-last dealer stop). Hands in which a player disconnected
+are counted apart when they differ, since Tenhou's play for a
+disconnected player doesn't follow the rules. Tenhou's logs are theirs: keep them under
 `data/` and never commit them.
 
 69 sample logs (424 hands) from the [mjx](https://github.com/mjx-project/mjx)

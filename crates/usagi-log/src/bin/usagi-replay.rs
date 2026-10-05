@@ -10,7 +10,9 @@
 //! no kuitan) are skipped. `--save DIR` writes each log that doesn't match
 //! (or can't be parsed) to `DIR/<id>.mjlog`, for a closer look. Logs from
 //! before June 2010 are replayed with that era's game-end rule (see
-//! [`usagi_log::Options`]). Exits non-zero if any hand doesn't match.
+//! [`usagi_log::Options`]). Hands that differ after a player disconnected
+//! are counted apart (see [`usagi_log::Report::disconnected`]). Exits
+//! non-zero if any other hand doesn't match.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -43,6 +45,7 @@ fn main() -> ExitCode {
     }
     let start = Instant::now();
     let (mut games, mut hands, mut skipped, mut bad_games, mut bad_hands) = (0, 0, 0, 0, 0);
+    let mut disconnected = 0;
     source::for_each(
         &sources,
         threads,
@@ -82,6 +85,7 @@ fn main() -> ExitCode {
             Outcome::Replayed(report) => {
                 games += 1;
                 hands += report.hands;
+                disconnected += report.disconnected.len();
                 if !report.ok() {
                     bad_games += 1;
                     bad_hands += report.mismatches.len();
@@ -100,6 +104,12 @@ fn main() -> ExitCode {
          {bad_games} games with problems, {bad_hands} mismatched hands",
         start.elapsed()
     );
+    if disconnected > 0 {
+        println!(
+            "{disconnected} more hands differ after a player disconnected (not counted; \
+             Tenhou's play for a disconnected player doesn't follow the rules)"
+        );
+    }
     if bad_games == 0 {
         ExitCode::SUCCESS
     } else {

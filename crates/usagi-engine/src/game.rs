@@ -1153,7 +1153,8 @@ impl<R: Rules> GameState<R> {
     }
 
     fn kakan(&mut self, seat: u8, t: Tile, events: &mut Vec<Event>) {
-        self.reveal_pending_dora(events);
+        // A previous kan's dora stays hidden until nobody robs this one:
+        // a chankan win doesn't see it (Tenhou).
         self.remove_from_hand(seat, t);
         let k = t.kind();
         let p = &mut self.players[seat as usize];
@@ -1214,6 +1215,7 @@ impl<R: Rules> GameState<R> {
         if ankan {
             self.reveal_dora(events);
         } else {
+            self.reveal_pending_dora(events);
             self.pending_dora += 1;
         }
         self.draw_rinshan(from, events);
