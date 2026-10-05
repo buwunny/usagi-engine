@@ -1300,13 +1300,14 @@ impl<R: Rules> GameState<R> {
             if let Some(liable) = self.pao_for(seat, &result) {
                 if liable != from {
                     // Liability on ron: the liable player and the discarder
-                    // split the hand's value (honba stay with the discarder).
+                    // split the hand's value, and the liable player pays
+                    // the honba (as Tenhou does).
                     let Payment::Ron(points) = pay else {
                         unreachable!()
                     };
-                    let half = (points / 2) as i32;
-                    deltas[from as usize] += half;
-                    deltas[liable as usize] -= half;
+                    let shift = (points / 2) as i32 + 300 * honba as i32;
+                    deltas[from as usize] += shift;
+                    deltas[liable as usize] -= shift;
                 }
             }
             for s in 0..4 {

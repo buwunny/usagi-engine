@@ -99,13 +99,40 @@ pub enum ReplayEvent<'a> {
     HandDone { hand: usize, ended: bool },
 }
 
-/// Replays every hand of `game`.
-pub fn replay(game: &Game) -> Report {
-    replay_with(game, &mut |_| {})
+/// Rule differences of older logs that the engine doesn't play.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Options {
+    /// Before June 2010 Tenhou had no all-last dealer stop: a repeating
+    /// dealer in South 4 (or the West round) played on even when first
+    /// with 30,000. The engine stops there, so with this set the replayer
+    /// accepts the log's next hand instead of reporting the game end.
+    pub no_dealer_stop: bool,
 }
 
-/// Like [`replay`], but reports each deal and step to `on`.
-pub fn replay_with(game: &Game, on: &mut dyn FnMut(ReplayEvent)) -> Report {
+impl Options {
+    /// The options for a log named by its Tenhou id (`2009022022gm-...`),
+    /// which starts with the hour it was played. Names without one get
+    /// today's rules.
+    pub fn for_log_id(name: &str) -> Options {
+        let date = name.match_indices("gm-").find_map(|(i, _)| {
+            let d = name.get(i.checked_sub(10)?..i)?;
+            d.bytes().all(|b| b.is_ascii_digit()).then_some(d)
+        });
+        Options {
+            // The last game in the archive that played on is from
+            // 2010-06-01 06:00 JST.
+            no_dealer_stop: date.is_some_and(|d| d < "2010060200"),
+        }
+    }
+}
+
+/// Replays every hand of `game`.
+pub fn replay(game: &Game) -> Report {
+    replay_with(game, Options::default(), &mut |_| {})
+}
+
+/// Like [`replay`], with `opts`, reporting each deal and step to `on`.
+pub fn replay_with(game: &Game, opts: Options, on: &mut dyn FnMut(ReplayEvent)) -> Report {
     let mut report = Report::default();
     if !game.is_tenhou_ranked_rules() {
         report.mismatches.push(Mismatch {
@@ -150,7 +177,7 @@ pub fn replay_with(game: &Game, on: &mut dyn FnMut(ReplayEvent)) -> Report {
                     _ => unreachable!(),
                 });
                 let last = events.len();
-                if let Err(message) = check_flow(&state, next, final_scores(events)) {
+                if let Err(message) = check_flow(&state, next, final_scores(events), opts) {
                     report.mismatches.push(at(last, message));
                 }
             }
@@ -170,9 +197,28 @@ fn final_scores(events: &[LogEvent]) -> Option<[i32; 4]> {
 
 /// After a hand, the engine's next state must be the log's next `INIT`, or
 /// the end of the game with the logged final scores.
-fn check_flow(g: &State, next: Option<&Init>, owari: Option<[i32; 4]>) -> Result<(), String> {
+fn check_flow(
+    g: &State,
+    next: Option<&Init>,
+    owari: Option<[i32; 4]>,
+    opts: Options,
+) -> Result<(), String> {
     match (next, owari) {
         (Some(n), _) => {
+            let dealer_repeats = n.round == g.round.index && n.honba == g.round.honba;
+            if g.phase == Phase::GameEnd && opts.no_dealer_stop && dealer_repeats {
+                // The engine stopped on the dealer and handed the sticks
+                // to first place; the old rules played on. Points must
+                // still add up.
+                let total = |s: [i32; 4], sticks: u8| s.iter().sum::<i32>() + 1000 * sticks as i32;
+                if total(n.scores, n.sticks) != total(g.scores, g.riichi_sticks) {
+                    return Err(format!(
+                        "next hand: log scores {:?} + {} sticks, engine {:?} + {}",
+                        n.scores, n.sticks, g.scores, g.riichi_sticks
+                    ));
+                }
+                return Ok(());
+            }
             if g.phase == Phase::GameEnd {
                 return Err("engine ended the game but the log goes on".into());
             }
@@ -543,4 +589,29 @@ fn check_hand_end(
         return Err(format!("deltas: log {log_deltas:?}, engine {deltas:?}"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn options_follow_the_log_date() {
+        let old = Options {
+            no_dealer_stop: true,
+        };
+        assert_eq!(
+            Options::for_log_id("2009.db:2009022022gm-00a9-0000-cd94aac8"),
+            old
+        );
+        assert_eq!(
+            Options::for_log_id("x/2010060106gm-00a9-0000-30d6de3b.mjlog"),
+            old
+        );
+        assert_eq!(
+            Options::for_log_id("2026090100gm-00a9-0000-0c26afa2.mjlog.gz"),
+            Options::default()
+        );
+        assert_eq!(Options::for_log_id("double-ron.mjlog"), Options::default());
+    }
 }

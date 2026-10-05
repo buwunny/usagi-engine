@@ -59,7 +59,10 @@ layout (`logs` table, bzip2 `log_content`), and replay on every core
 cargo run --release -p usagi-log --bin usagi-replay -- data/tenhou-original-xml.tar.zst
 ```
 
-Tenhou's logs are theirs: keep them under `data/` and never commit them.
+`--save DIR` writes every log that doesn't match to `DIR` for a closer
+look. Logs from before June 2010 are replayed with that era's game-end
+rule (no all-last dealer stop). Tenhou's logs are theirs: keep them under
+`data/` and never commit them.
 
 69 sample logs (424 hands) from the [mjx](https://github.com/mjx-project/mjx)
 project's tests run on every `cargo test`.

@@ -7,7 +7,7 @@ mod oracle;
 use std::path::{Path, PathBuf};
 
 use oracle::Oracle;
-use usagi_log::{ReplayEvent, parse, read_log, replay_with};
+use usagi_log::{Options, ReplayEvent, parse, read_log, replay_with};
 
 fn sample_logs() -> Vec<PathBuf> {
     let dir = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/data");
@@ -36,7 +36,7 @@ fn sample_logs_match_riichienv() {
     for path in sample_logs() {
         let game = parse(&read_log(&path).unwrap()).unwrap();
         let mut o = Oracle::new();
-        replay_with(&game, &mut |e| o.on_event(e));
+        replay_with(&game, Options::default(), &mut |e| o.on_event(e));
         let name = path.file_name().unwrap().to_string_lossy().to_string();
         points += o.result.points;
         failures.extend(o.result.diffs.iter().map(|d| format!("{name}: {d}")));
@@ -65,7 +65,7 @@ fn a_different_wall_is_noticed() {
         .join("tests/data/mjx/2010091009gm-00a9-0000-83af2648.mjlog");
     let game = parse(&read_log(&path).unwrap()).unwrap();
     let mut o = Oracle::new();
-    replay_with(&game, &mut |e| match e {
+    replay_with(&game, Options::default(), &mut |e| match e {
         ReplayEvent::Deal {
             hand,
             init,

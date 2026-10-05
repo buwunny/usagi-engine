@@ -17,7 +17,7 @@ use std::io::Read;
 use std::path::Path;
 
 pub use mjlog::{Game, LogError, LogEvent, parse};
-pub use replay::{Mismatch, ReplayEvent, Report, replay, replay_with};
+pub use replay::{Mismatch, Options, ReplayEvent, Report, replay, replay_with};
 
 /// Reads an mjlog file. Gzip-compressed files (as Tenhou serves them) are
 /// detected by their magic bytes and decompressed.

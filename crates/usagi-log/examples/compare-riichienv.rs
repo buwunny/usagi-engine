@@ -18,7 +18,7 @@ use std::time::Instant;
 
 use oracle::{Comparison, Oracle};
 use usagi_log::source::{self, Source};
-use usagi_log::{parse, replay_with};
+use usagi_log::{Options, parse, replay_with};
 
 enum Outcome {
     Unreadable(String),
@@ -39,7 +39,7 @@ fn main() -> ExitCode {
     source::for_each(
         &sources,
         threads,
-        |_, text| {
+        |name, text| {
             let game = match text.and_then(|s| parse(&s).map_err(|e| e.to_string())) {
                 Ok(g) => g,
                 Err(e) => return Outcome::Unreadable(e),
@@ -48,7 +48,7 @@ fn main() -> ExitCode {
                 return Outcome::Skipped;
             }
             let mut o = Oracle::new();
-            let report = replay_with(&game, &mut |e| o.on_event(e));
+            let report = replay_with(&game, Options::for_log_id(name), &mut |e| o.on_event(e));
             Outcome::Compared(o.result, report.mismatches.len())
         },
         |(name, outcome)| {

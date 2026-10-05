@@ -1,20 +1,23 @@
 //! Replays Tenhou logs through the engine and reports mismatches.
 //!
-//!     cargo run --release -p usagi-log --bin usagi-replay -- [--threads N] LOGS...
+//!     cargo run --release -p usagi-log --bin usagi-replay -- [--threads N] [--save DIR] LOGS...
 //!
 //! Each argument is a log file (plain or gzipped), an archive of logs
 //! (`.tar`, `.tar.gz`, `.tar.zst`), an SQLite database of logs, or a
 //! directory searched recursively for any of those; see
 //! [`usagi_log::source`]. Logs are replayed on one thread per core unless
 //! `--threads` says otherwise. Logs with other rules (sanma, no red fives,
-//! no kuitan) are skipped. Exits non-zero if any hand doesn't match.
+//! no kuitan) are skipped. `--save DIR` writes each log that doesn't match
+//! (or can't be parsed) to `DIR/<id>.mjlog`, for a closer look. Logs from
+//! before June 2010 are replayed with that era's game-end rule (see
+//! [`usagi_log::Options`]). Exits non-zero if any hand doesn't match.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::Instant;
 
 use usagi_log::source::{self, Source};
-use usagi_log::{Report, parse, replay};
+use usagi_log::{Options, Report, parse, replay_with};
 
 enum Outcome {
     Unreadable(String),
@@ -23,24 +26,52 @@ enum Outcome {
 }
 
 fn main() -> ExitCode {
-    let Some((threads, sources)) = args() else {
-        eprintln!("usage: usagi-replay [--threads N] LOG_OR_ARCHIVE_OR_DIR...");
+    let Some(Args {
+        threads,
+        save,
+        sources,
+    }) = args()
+    else {
+        eprintln!("usage: usagi-replay [--threads N] [--save DIR] LOG_OR_ARCHIVE_OR_DIR...");
         return ExitCode::FAILURE;
     };
+    if let Some(dir) = &save
+        && let Err(e) = std::fs::create_dir_all(dir)
+    {
+        eprintln!("can't create {}: {e}", dir.display());
+        return ExitCode::FAILURE;
+    }
     let start = Instant::now();
     let (mut games, mut hands, mut skipped, mut bad_games, mut bad_hands) = (0, 0, 0, 0, 0);
     source::for_each(
         &sources,
         threads,
-        |_, text| {
-            let game = match text.and_then(|s| parse(&s).map_err(|e| e.to_string())) {
-                Ok(g) => g,
+        |name, text| {
+            let text = match text {
+                Ok(t) => t,
                 Err(e) => return Outcome::Unreadable(e),
             };
-            if !game.is_tenhou_ranked_rules() {
-                return Outcome::Skipped;
+            let outcome = match parse(&text) {
+                Err(e) => Outcome::Unreadable(e.to_string()),
+                Ok(game) if !game.is_tenhou_ranked_rules() => Outcome::Skipped,
+                Ok(game) => {
+                    Outcome::Replayed(replay_with(&game, Options::for_log_id(name), &mut |_| {}))
+                }
+            };
+            let bad = match &outcome {
+                Outcome::Unreadable(_) => true,
+                Outcome::Replayed(r) => !r.ok(),
+                Outcome::Skipped => false,
+            };
+            if bad && let Some(dir) = &save {
+                let id = name.rsplit([':', '/']).next().unwrap_or(name);
+                let id = id.trim_end_matches(".gz").trim_end_matches(".mjlog");
+                let path = dir.join(format!("{id}.mjlog"));
+                if let Err(e) = std::fs::write(&path, &text) {
+                    eprintln!("can't write {}: {e}", path.display());
+                }
             }
-            Outcome::Replayed(replay(&game))
+            outcome
         },
         |(name, outcome)| match outcome {
             Outcome::Unreadable(e) => {
@@ -76,14 +107,23 @@ fn main() -> ExitCode {
     }
 }
 
-/// `--threads N` and the inputs, or `None` for a usage error.
-fn args() -> Option<(usize, Vec<Source>)> {
+struct Args {
+    threads: usize,
+    save: Option<PathBuf>,
+    sources: Vec<Source>,
+}
+
+/// The parsed command line, or `None` for a usage error.
+fn args() -> Option<Args> {
     let mut threads = source::default_threads();
+    let mut save = None;
     let mut paths = Vec::new();
     let mut it = std::env::args_os().skip(1);
     while let Some(a) = it.next() {
         if a == "--threads" {
             threads = it.next()?.to_str()?.parse().ok()?;
+        } else if a == "--save" {
+            save = Some(PathBuf::from(it.next()?));
         } else {
             paths.push(PathBuf::from(a));
         }
@@ -91,5 +131,9 @@ fn args() -> Option<(usize, Vec<Source>)> {
     if paths.is_empty() {
         return None;
     }
-    Some((threads, source::collect(&paths)))
+    Some(Args {
+        threads,
+        save,
+        sources: source::collect(&paths),
+    })
 }
