@@ -52,6 +52,20 @@ the first mismatch in each hand. `data/` is git-ignored.
 69 sample logs (424 hands) from the [mjx](https://github.com/mjx-project/mjx)
 project's tests run on every `cargo test`.
 
+The replayer only shows that the moves players made are legal. To check
+the full set of legal actions, replay the same logs through
+[riichienv-core](https://github.com/smly/RiichiEnv) side by side:
+
+```sh
+cargo run --release -p usagi-log --example compare-riichienv -- data/logs/2026-09
+```
+
+At every turn and call window it compares what each seat may do in both
+engines and prints each difference (riichienv-core is a test-only
+dependency). The sample logs get the same check on every `cargo test`.
+The 3,610 Houou games from September 2026 (2.35 million decision points)
+show no differences.
+
 ## Playing bots over Mjai
 
 ```sh
