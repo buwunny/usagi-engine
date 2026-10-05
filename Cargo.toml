@@ -8,8 +8,7 @@ members = [
     "crates/usagi-log",
     "crates/usagi-mjai",
     "crates/usagi-obs",
-    # Added in later milestones:
-    # "crates/usagi-py",     # M8
+    "crates/usagi-py",
 ]
 
 # Settings every crate inherits with `version.workspace = true` etc.
