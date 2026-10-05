@@ -13,7 +13,9 @@
 //!   bzip2 or zstd compressed; entries that aren't logs are skipped.
 //! - `.db`, `.sqlite`: an SQLite database with one log per row, in the
 //!   layout of the phoenix-logs scraper (table `logs`, columns `log_id`
-//!   and `log_content`, the content bzip2 compressed).
+//!   and `log_content`) or of the tenhou-houou-mjai dataset's original-XML
+//!   databases (table `logs`, columns `id`, `log` and `num_players`; only
+//!   four-player rows are read). The content may be compressed as above.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -79,7 +81,7 @@ fn key(s: &Source) -> &Path {
     }
 }
 
-/// Decompresses `bytes` if they start with a gzip, bzip2 or zstd header,
+/// Decompresses `bytes` if they start with a gzip, bzip2, zstd or zlib header,
 /// and returns the text.
 pub fn decode(bytes: &[u8]) -> std::io::Result<String> {
     let mut s = String::new();
@@ -89,9 +91,22 @@ pub fn decode(bytes: &[u8]) -> std::io::Result<String> {
         bzip2::read::MultiBzDecoder::new(bytes).read_to_string(&mut s)?;
     } else if bytes.starts_with(&[0x28, 0xb5, 0x2f, 0xfd]) {
         zstd::stream::read::Decoder::new(bytes)?.read_to_string(&mut s)?;
+    } else if bytes.len() >= 2
+        && bytes[0] == 0x78
+        && (u16::from(bytes[0]) << 8 | u16::from(bytes[1])) % 31 == 0
+    {
+        flate2::read::ZlibDecoder::new(bytes).read_to_string(&mut s)?;
     } else {
-        return String::from_utf8(bytes.to_vec())
-            .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e));
+        return String::from_utf8(bytes.to_vec()).map_err(|_| {
+            let head: Vec<String> = bytes.iter().take(8).map(|b| format!("{b:02x}")).collect();
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                format!(
+                    "not text and no known compression (starts {})",
+                    head.join(" ")
+                ),
+            )
+        });
     }
     Ok(s)
 }
@@ -232,15 +247,24 @@ fn read_db(path: &Path, tx: &mpsc::SyncSender<Raw>) -> Result<(), String> {
     let db =
         rusqlite::Connection::open_with_flags(path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
             .map_err(|e| e.to_string())?;
-    let mut stmt = db
-        .prepare("SELECT log_id, log_content FROM logs WHERE log_content IS NOT NULL")
-        .map_err(|e| {
-            format!(
-                "{e}: expected table `logs` with columns `log_id` and `log_content`; \
-                 this database has: {}",
-                schema(&db)
-            )
-        })?;
+    let cols = columns(&db, "logs");
+    let has = |c: &str| cols.iter().any(|x| x == c);
+    let sql = if has("log_id") && has("log_content") {
+        // phoenix-logs
+        "SELECT log_id, log_content FROM logs WHERE log_content IS NOT NULL"
+    } else if has("id") && has("log") && has("num_players") {
+        // The tenhou-houou-mjai dataset's original-XML databases.
+        "SELECT id, log FROM logs WHERE log IS NOT NULL AND num_players = 4"
+    } else if has("id") && has("log") {
+        "SELECT id, log FROM logs WHERE log IS NOT NULL"
+    } else {
+        return Err(format!(
+            "unknown layout: expected a `logs` table with `log_id`/`log_content` or \
+             `id`/`log` columns; this database has: {}",
+            schema(&db)
+        ));
+    };
+    let mut stmt = db.prepare(sql).map_err(|e| e.to_string())?;
     let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
         let id: String = row.get(0).map_err(|e| e.to_string())?;
@@ -267,6 +291,13 @@ fn read_db(path: &Path, tx: &mpsc::SyncSender<Raw>) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The column names of `table`, empty if there is no such table.
+fn columns(db: &rusqlite::Connection, table: &str) -> Vec<String> {
+    db.prepare(&format!("PRAGMA table_info({table})"))
+        .and_then(|mut st| st.query_map([], |r| r.get::<_, String>(1))?.collect())
+        .unwrap_or_default()
 }
 
 /// The `CREATE` statements of a database's tables, for error messages.
@@ -363,15 +394,43 @@ mod tests {
             )
             .unwrap();
         }
+        // The tenhou-houou-mjai layout: zlib content, a sanma row to skip.
+        let db2_path = d.join("2010.db");
+        let _ = std::fs::remove_file(&db2_path);
+        {
+            let db = rusqlite::Connection::open(&db2_path).unwrap();
+            db.execute_batch(
+                "CREATE TABLE logs (id TEXT PRIMARY KEY, date TEXT NOT NULL, \
+                 num_players INTEGER NOT NULL, is_tonpu INTEGER NOT NULL, \
+                 is_processed INTEGER NOT NULL, was_error INTEGER NOT NULL, log BLOB) \
+                 WITHOUT ROWID;",
+            )
+            .unwrap();
+            let mut z = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::fast());
+            z.write_all(LOG.as_bytes()).unwrap();
+            let z = z.finish().unwrap();
+            db.execute(
+                "INSERT INTO logs VALUES ('e', '', 4, 0, 1, 0, ?1), ('f', '', 3, 0, 1, 0, ?1)",
+                [z],
+            )
+            .unwrap();
+        }
         let sources = collect(std::slice::from_ref(&d));
-        assert_eq!(sources, vec![Source::Db(db_path), Source::Tar(tar_path)]);
+        assert_eq!(
+            sources,
+            vec![
+                Source::Db(db_path),
+                Source::Db(db2_path),
+                Source::Tar(tar_path)
+            ]
+        );
         let got = read_all(&sources);
         let mut names: Vec<&str> = got
             .iter()
             .map(|(n, _)| n.rsplit(':').next().unwrap())
             .collect();
         names.sort();
-        assert_eq!(names, ["2009/a.mjlog", "2009/b.mjlog.gz", "c"]);
+        assert_eq!(names, ["2009/a.mjlog", "2009/b.mjlog.gz", "c", "e"]);
         assert!(got.iter().all(|(_, t)| t == LOG));
         std::fs::remove_dir_all(&d).unwrap();
     }
