@@ -519,6 +519,16 @@ impl<R: Rules> GameState<R> {
         shanten(&c, self.meld_count(seat)) == -1
     }
 
+    /// Whether a tile of `kind` completes kokushi for `seat`.
+    fn kokushi_wait(&self, seat: u8, kind: u8) -> bool {
+        let mut c = self.counts(seat);
+        if self.meld_count(seat) != 0 || c.0[kind as usize] >= 4 {
+            return false;
+        }
+        c.0[kind as usize] += 1;
+        usagi_core::shanten::kokushi(&c) == -1
+    }
+
     /// Whether `seat` may not ron right now: a wait is in its own river, or
     /// it passed a winning tile this go-around or since its riichi.
     pub fn is_furiten(&self, seat: u8) -> bool {
@@ -884,8 +894,17 @@ impl<R: Rules> GameState<R> {
     /// Seats (other than `except`) whose shape `tile` completes but who
     /// didn't ron go into temporary (or riichi) furiten.
     fn mark_missed_wins(&mut self, from: u8, tile: Tile, ron: u8) {
+        self.mark_missed(from, tile, ron, false);
+    }
+
+    /// Like [`Self::mark_missed_wins`], but with `kokushi_only` only a
+    /// kokushi wait counts: a closed kan can't be robbed otherwise, so
+    /// other waits on its tile miss nothing.
+    fn mark_missed(&mut self, from: u8, tile: Tile, ron: u8, kokushi_only: bool) {
         for s in (0..4).filter(|&s| s != from && ron & bit(s) == 0) {
-            if self.completes(s, tile.kind()) {
+            if self.completes(s, tile.kind())
+                && (!kokushi_only || self.kokushi_wait(s, tile.kind()))
+            {
                 let p = &mut self.players[s as usize];
                 p.flags |= pf::TEMP_FURITEN;
                 if p.in_riichi() {
@@ -1117,12 +1136,8 @@ impl<R: Rules> GameState<R> {
         let tile = if red { red_tile(k) } else { Tile::from_kind(k) };
         let mut pending = 0;
         for s in (0..4).filter(|&s| s != seat) {
-            let mut c = self.counts(s);
-            if self.meld_count(s) == 0 && c.0[k as usize] < 4 {
-                c.0[k as usize] += 1;
-                if usagi_core::shanten::kokushi(&c) == -1 && self.can_ron(s, tile, true) {
-                    pending |= bit(s);
-                }
+            if self.kokushi_wait(s, k) && self.can_ron(s, tile, true) {
+                pending |= bit(s);
             }
         }
         self.phase = Phase::ChankanWindow {
@@ -1193,7 +1208,7 @@ impl<R: Rules> GameState<R> {
             self.ron_wins(&winners[..n], from, tile, true, events);
             return;
         }
-        self.mark_missed_wins(from, tile, 0);
+        self.mark_missed(from, tile, 0, ankan);
         self.break_ippatsu();
         self.kan_count += 1;
         if ankan {
