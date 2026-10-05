@@ -1,0 +1,17 @@
+[package]
+name = "usagi-engine"
+description = "Game state and turn flow for Tenhou-rules Riichi Mahjong"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+usagi-core.workspace = true
+
+[dev-dependencies]
+proptest.workspace = true
+# For engine-vs-engine tests (Apache-2.0, test-only, never shipped).
+# Pinned exactly so a new release can't change test results silently.
+# riichienv-core = "=0.4.10"
