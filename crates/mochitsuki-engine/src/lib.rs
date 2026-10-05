@@ -24,4 +24,4 @@ pub use action::{Action, ActionList};
 pub use game::{AbortKind, Event, StepError};
 pub use phase::Phase;
 pub use rules::{Rules, TenhouRules};
-pub use state::{GameState, PlayerState};
+pub use state::{GameState, PlayerState, Round};

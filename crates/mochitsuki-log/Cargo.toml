@@ -1,0 +1,13 @@
+[package]
+name = "mochitsuki-log"
+description = "Tenhou mjlog parser and log replayer for mochitsuki"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mochitsuki-core.workspace = true
+mochitsuki-engine.workspace = true
+flate2 = "1"
