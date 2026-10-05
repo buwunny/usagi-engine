@@ -502,7 +502,9 @@ impl<R: Rules> GameState<R> {
         shanten(&c, self.meld_count(seat)) == -1
     }
 
-    fn is_furiten(&self, seat: u8) -> bool {
+    /// Whether `seat` may not ron right now: a wait is in its own river, or
+    /// it passed a winning tile this go-around or since its riichi.
+    pub fn is_furiten(&self, seat: u8) -> bool {
         let p = &self.players[seat as usize];
         if p.has(pf::TEMP_FURITEN) || p.has(pf::RIICHI_FURITEN) {
             return true;

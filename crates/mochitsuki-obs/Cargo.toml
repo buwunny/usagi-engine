@@ -1,0 +1,12 @@
+[package]
+name = "mochitsuki-obs"
+description = "Per-seat observations and the action space for mochitsuki"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+mochitsuki-core.workspace = true
+mochitsuki-engine.workspace = true

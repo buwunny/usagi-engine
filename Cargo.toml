@@ -5,9 +5,9 @@ resolver = "3"
 members = [
     "crates/mochitsuki-core",
     "crates/mochitsuki-engine",
+    "crates/mochitsuki-obs",
     # Added in later milestones:
     # "crates/mochitsuki-log",    # M4 + M6
-    # "crates/mochitsuki-obs",    # M7
     # "crates/mochitsuki-mjai",   # M8
     # "crates/mochitsuki-py",     # M8
 ]
@@ -23,6 +23,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 mochitsuki-core = { path = "crates/mochitsuki-core" }
 mochitsuki-engine = { path = "crates/mochitsuki-engine" }
+mochitsuki-obs = { path = "crates/mochitsuki-obs" }
 proptest = "1"
 
 # Tests run with optimizations so the brute-force checks in M2 finish quickly.
