@@ -235,7 +235,11 @@ fn read_db(path: &Path, tx: &mpsc::SyncSender<Raw>) -> Result<(), String> {
     let mut stmt = db
         .prepare("SELECT log_id, log_content FROM logs WHERE log_content IS NOT NULL")
         .map_err(|e| {
-            format!("{e} (expected table `logs` with columns `log_id` and `log_content`)")
+            format!(
+                "{e}: expected table `logs` with columns `log_id` and `log_content`; \
+                 this database has: {}",
+                schema(&db)
+            )
         })?;
     let mut rows = stmt.query([]).map_err(|e| e.to_string())?;
     while let Some(row) = rows.next().map_err(|e| e.to_string())? {
@@ -263,6 +267,18 @@ fn read_db(path: &Path, tx: &mpsc::SyncSender<Raw>) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The `CREATE` statements of a database's tables, for error messages.
+fn schema(db: &rusqlite::Connection) -> String {
+    let sql: Result<Vec<String>, _> = db
+        .prepare("SELECT sql FROM sqlite_master WHERE type = 'table'")
+        .and_then(|mut st| st.query_map([], |r| r.get(0))?.collect());
+    match sql {
+        Ok(v) if !v.is_empty() => v.join("; "),
+        Ok(_) => "no tables".into(),
+        Err(e) => format!("unreadable schema ({e})"),
+    }
 }
 
 /// Worker threads to use by default: one per core.
