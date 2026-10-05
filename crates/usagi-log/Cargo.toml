@@ -1,0 +1,13 @@
+[package]
+name = "usagi-log"
+description = "Tenhou mjlog parser and log replayer for usagi engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+usagi-core.workspace = true
+usagi-engine.workspace = true
+flate2 = "1"
