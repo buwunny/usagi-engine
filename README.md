@@ -17,8 +17,8 @@ Observations, Mjai and the Python bindings come in later milestones.
 ## Replaying Tenhou logs
 
 ```sh
-python3 tools/download_logs.py --year 2023 --month 1 --out data/logs/2023-01
-cargo run --release -p usagi-log --bin usagi-replay -- data/logs/2023-01
+python3 tools/download_logs.py --year 2026 --month 9 --out data/logs/2026-09
+cargo run --release -p usagi-log --bin usagi-replay -- data/logs/2026-09
 ```
 
 The replayer rebuilds each hand's wall from the log, feeds every logged

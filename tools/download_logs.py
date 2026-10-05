@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """Download Tenhou Houou (phoenix room) game logs.
 
-    python3 tools/download_logs.py --year 2023 --month 1 --out data/logs/2023-01
-    python3 tools/download_logs.py --year 2023 --limit 1000 --out data/logs/sample
+    python3 tools/download_logs.py --year 2026 --month 9 --out data/logs/2026-09
+    python3 tools/download_logs.py --year 2026 --limit 1000 --out data/logs/sample
 
-Tenhou publishes a yearly archive of game lists (scraw<YEAR>.zip, one
-scc<YYYYMMDD>.html.gz file per day). The script reads the Houou hanchan
-games with red fives and open tanyao ("四鳳南喰赤") from those lists and
+Tenhou publishes one game list per day, scc<YYYYMMDD>.html.gz, under
+https://tenhou.net/sc/raw/dat/<YEAR>/ (the last week or so sits directly
+under dat/ as hourly lists, scc<YYYYMMDDHH>.html.gz, until it is archived). Only the current year is kept there; the
+lists for earlier years are no longer served. The script reads the Houou
+hanchan games with red fives and open tanyao ("四鳳南喰赤") from those lists and
 downloads each log as a gzipped mjlog, <id>.mjlog.gz, skipping files it
 already has, so an interrupted run can simply be restarted.
 
@@ -15,16 +17,17 @@ second. Standard library only.
 """
 
 import argparse
+import calendar
 import gzip
-import io
 import re
 import sys
 import time
+import urllib.error
 import urllib.request
-import zipfile
 from pathlib import Path
 
-ARCHIVE_URL = "https://tenhou.net/sc/raw/scraw{year}.zip"
+DAY_URL = "https://tenhou.net/sc/raw/dat/{year}/scc{date}.html.gz"
+HOUR_URL = "https://tenhou.net/sc/raw/dat/scc{date}{hour:02}.html.gz"
 LOG_URL = "https://tenhou.net/0/log/?{id}"
 # Houou, four players, hanchan, kuitan, red fives.
 ROOM = "四鳳南喰赤"
@@ -38,23 +41,43 @@ def fetch(url: str, timeout: float = 60) -> bytes:
         return r.read()
 
 
+def day_list(year: int, month: int, day: int) -> str | None:
+    """One day's game list, or None if Tenhou doesn't have it."""
+    date = f"{year:04}{month:02}{day:02}"
+    text = fetch_list(DAY_URL.format(year=year, date=date))
+    if text is not None:
+        return text
+    hours = [fetch_list(HOUR_URL.format(date=date, hour=h)) for h in range(24)]
+    if all(h is None for h in hours):
+        return None
+    return "".join(h for h in hours if h is not None)
+
+
+def fetch_list(url: str) -> str | None:
+    try:
+        return gzip.decompress(fetch(url)).decode("utf-8", errors="replace")
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
+
+
 def houou_ids(year: int, month: int | None) -> list[str]:
-    """Game ids from the yearly archive, in date order."""
-    print(f"downloading the {year} game list...", file=sys.stderr)
-    archive = zipfile.ZipFile(io.BytesIO(fetch(ARCHIVE_URL.format(year=year), timeout=600)))
+    """Game ids from the daily game lists, in date order."""
     ids = []
-    for name in sorted(archive.namelist()):
-        day = re.search(r"scc(\d{8})\.html\.gz$", name)
-        if not day:
-            continue
-        if month is not None and int(day.group(1)[4:6]) != month:
-            continue
-        text = gzip.decompress(archive.read(name)).decode("utf-8", errors="replace")
-        for line in text.splitlines():
-            if ROOM in line:
-                m = LOG_ID.search(line)
-                if m:
-                    ids.append(m.group(1))
+    for m in [month] if month is not None else range(1, 13):
+        missing = 0
+        for d in range(1, calendar.monthrange(year, m)[1] + 1):
+            text = day_list(year, m, d)
+            if text is None:
+                missing += 1
+                continue
+            for line in text.splitlines():
+                if ROOM in line:
+                    found = LOG_ID.search(line)
+                    if found:
+                        ids.append(found.group(1))
+        print(f"{year}-{m:02}: {len(ids)} games so far, {missing} days missing", file=sys.stderr)
     return ids
 
 
