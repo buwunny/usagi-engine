@@ -49,6 +49,18 @@ changes match, and (in hanchan logs) that each hand leads to the next one
 and the last hand ends the game with the logged final scores. It prints
 the first mismatch in each hand. `data/` is git-ignored.
 
+Besides single logs, both commands read archives of logs without
+unpacking them (`.tar`, `.tar.gz`, `.tar.zst`; the entries may be plain or
+gzip, bzip2 or zstd compressed) and SQLite databases in the phoenix-logs
+layout (`logs` table, bzip2 `log_content`), and replay on every core
+(`--threads N` to change that):
+
+```sh
+cargo run --release -p usagi-log --bin usagi-replay -- data/tenhou-original-xml.tar.zst
+```
+
+Tenhou's logs are theirs: keep them under `data/` and never commit them.
+
 69 sample logs (424 hands) from the [mjx](https://github.com/mjx-project/mjx)
 project's tests run on every `cargo test`.
 

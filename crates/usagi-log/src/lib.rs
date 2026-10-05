@@ -10,6 +10,7 @@
 
 pub mod mjlog;
 pub mod replay;
+pub mod source;
 pub mod xml;
 
 use std::io::Read;

@@ -2,3 +2,10 @@
 *.bin
 /data/
 __pycache__/
+
+# Log archives and databases: Tenhou's data, never committed.
+*.tar
+*.tar.zst
+*.tar.gz
+*.db
+*.sqlite
