@@ -12,8 +12,29 @@ training environment for bunny bot.
 | `usagi-engine` | The game: wall, dealing, turns, calls, riichi, kans, furiten, abortive draws, scoring and the end of the game. |
 | `usagi-log` | Tenhou mjlog parser and a replayer that plays logged games through the engine and checks every action and score. |
 | `usagi-obs` | One seat's observation as fixed-size feature planes (version 1), and a 155-way action numbering with legal-action masks. |
+| `usagi-py` | Python bindings (`import usagi`): `Game`, and `VecEnv` for many games stepped in parallel with NumPy outputs. |
 
-Mjai and the Python bindings come in later milestones.
+Mjai comes in a later milestone.
+
+## Python
+
+```sh
+pip install ./crates/usagi-py      # builds the Rust extension with maturin
+python crates/usagi-py/examples/random_selfplay.py
+```
+
+```python
+import usagi as mj
+
+env = mj.VecEnv(1024, seed=0)           # 1024 games on Rust threads
+seats, planes, scalars, scores, masks = env.observe()
+actions = policy(planes, scalars, masks)  # one action index per game
+done, final_scores = env.step(actions)  # finished games restart
+```
+
+`Game` steps one game a seat at a time and can be copied for search.
+Observations and action indices follow `usagi-obs`; type stubs ship
+with the package.
 
 ## Replaying Tenhou logs
 
