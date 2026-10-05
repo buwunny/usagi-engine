@@ -19,7 +19,8 @@
 //! | `DORA hai` | A new dora indicator flips |
 //! | `AGARI` | A win, with yaku, fu, points and score changes |
 //! | `RYUUKYOKU` | A draw, exhaustive or abortive |
-//! | `BYE` / `UN` | Disconnects and reconnects (ignored) |
+//! | `BYE who` | A player disconnected |
+//! | `UN` | Player names, and reconnects (ignored) |
 
 use std::fmt;
 
@@ -284,13 +285,31 @@ pub struct Ryuukyoku {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LogEvent {
     Init(Init),
-    Draw { seat: u8, tile: TileId },
-    Discard { seat: u8, tile: TileId },
-    Call { seat: u8, call: Call },
-    Riichi { seat: u8, step: u8 },
-    Dora { indicator: TileId },
+    Draw {
+        seat: u8,
+        tile: TileId,
+    },
+    Discard {
+        seat: u8,
+        tile: TileId,
+    },
+    Call {
+        seat: u8,
+        call: Call,
+    },
+    Riichi {
+        seat: u8,
+        step: u8,
+    },
+    Dora {
+        indicator: TileId,
+    },
     Agari(Box<Agari>),
     Ryuukyoku(Box<Ryuukyoku>),
+    /// `seat` lost its connection; Tenhou plays for it until it returns.
+    Disconnect {
+        seat: u8,
+    },
 }
 
 /// One logged game.
@@ -393,6 +412,9 @@ fn event(el: &Element, room: &mut u32) -> Result<Option<LogEvent>, LogError> {
         },
         "AGARI" => LogEvent::Agari(Box::new(agari(el)?)),
         "RYUUKYOKU" => LogEvent::Ryuukyoku(Box::new(ryuukyoku(el)?)),
+        "BYE" => LogEvent::Disconnect {
+            seat: seat(req(el, "who")?)?,
+        },
         _ => return Ok(None),
     }))
 }

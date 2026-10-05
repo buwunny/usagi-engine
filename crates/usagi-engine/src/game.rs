@@ -670,7 +670,9 @@ impl<R: Rules> GameState<R> {
             out.push(Action::Ron);
         }
         let p = &self.players[seat as usize];
-        if !p.in_riichi() && self.tiles_left() > 0 {
+        // The discard after a fourth kan by two or more players can only be
+        // ronned: if nobody does, the hand is aborted.
+        if !p.in_riichi() && self.tiles_left() > 0 && !self.four_kans_abort() {
             let k = tile.kind();
             let n = p.hand[k as usize];
             if n >= 2 && self.has_discard_after_call(seat, &[k, k], [k, NO_KIND]) {
@@ -995,7 +997,7 @@ impl<R: Rules> GameState<R> {
             self.abort(AbortKind::SuuchaRiichi, events);
             return;
         }
-        if self.kan_count == 4 && !self.players.iter().any(|p| self.kans_of(p) == 4) {
+        if self.four_kans_abort() {
             self.abort(AbortKind::Suukaikan, events);
             return;
         }
@@ -1004,6 +1006,12 @@ impl<R: Rules> GameState<R> {
             return;
         }
         self.draw_live((from + 1) % 4, events);
+    }
+
+    /// Four kans, not all by one player: the hand ends unless the next
+    /// discard is ronned (suukaikan).
+    fn four_kans_abort(&self) -> bool {
+        self.kan_count == 4 && !self.players.iter().any(|p| self.kans_of(p) == 4)
     }
 
     fn kans_of(&self, p: &PlayerState) -> usize {
@@ -1153,7 +1161,8 @@ impl<R: Rules> GameState<R> {
     }
 
     fn kakan(&mut self, seat: u8, t: Tile, events: &mut Vec<Event>) {
-        self.reveal_pending_dora(events);
+        // A previous kan's dora stays hidden until nobody robs this one:
+        // a chankan win doesn't see it (Tenhou).
         self.remove_from_hand(seat, t);
         let k = t.kind();
         let p = &mut self.players[seat as usize];
@@ -1214,6 +1223,7 @@ impl<R: Rules> GameState<R> {
         if ankan {
             self.reveal_dora(events);
         } else {
+            self.reveal_pending_dora(events);
             self.pending_dora += 1;
         }
         self.draw_rinshan(from, events);
@@ -1300,13 +1310,14 @@ impl<R: Rules> GameState<R> {
             if let Some(liable) = self.pao_for(seat, &result) {
                 if liable != from {
                     // Liability on ron: the liable player and the discarder
-                    // split the hand's value (honba stay with the discarder).
+                    // split the hand's value, and the liable player pays
+                    // the honba (as Tenhou does).
                     let Payment::Ron(points) = pay else {
                         unreachable!()
                     };
-                    let half = (points / 2) as i32;
-                    deltas[from as usize] += half;
-                    deltas[liable as usize] -= half;
+                    let shift = (points / 2) as i32 + 300 * honba as i32;
+                    deltas[from as usize] += shift;
+                    deltas[liable as usize] -= shift;
                 }
             }
             for s in 0..4 {

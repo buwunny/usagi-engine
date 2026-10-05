@@ -213,6 +213,51 @@ fn chankan_robs_a_kakan() {
 }
 
 #[test]
+fn chankan_does_not_see_the_previous_kans_dora() {
+    // Seat 1 pons 6p and 8s, adds the drawn 6p, and from the rinshan
+    // draw adds its 8s at once. Seat 2 robs the 8s. The first kakan's
+    // dora is only revealed if nobody robs the second (Tenhou).
+    let mut g = game(
+        [
+            "1119m1119p1119s6p",
+            "66p888s13m19p9m5z6z7z",
+            "67s234m345m345p22m",
+            "8s",
+        ],
+        "7z4z4z4z4z2s6p",
+    );
+    act(&mut g, 0, Action::Discard(t("6p")));
+    others_pass(&mut g, 1);
+    act(&mut g, 1, Action::Pon([t("6p"), t("6p")]));
+    act(&mut g, 1, Action::Discard(t("7z")));
+    all_pass(&mut g);
+    act(&mut g, 2, Action::Discard(t("4z")));
+    all_pass(&mut g);
+    act(&mut g, 3, Action::Discard(t("8s")));
+    act(&mut g, 2, Action::Pass);
+    others_pass(&mut g, 1);
+    act(&mut g, 1, Action::Pon([t("8s"), t("8s")]));
+    act(&mut g, 1, Action::Discard(t("6z")));
+    all_pass(&mut g);
+    for seat in [2, 3, 0] {
+        let drawn = Tile::from_code(g.players[seat as usize].drawn).unwrap();
+        act(&mut g, seat, Action::Discard(drawn));
+        all_pass(&mut g);
+    }
+    act(&mut g, 1, Action::Kakan(t("6p")));
+    all_pass(&mut g);
+    assert_eq!(g.dora_revealed, 1);
+    let ev = act(&mut g, 1, Action::Kakan(t("8s")));
+    assert!(!ev.iter().any(|e| matches!(e, Event::NewDora { .. })));
+    others_pass(&mut g, 2);
+    let ev = act(&mut g, 2, Action::Ron);
+    assert!(!ev.iter().any(|e| matches!(e, Event::NewDora { .. })));
+    assert_eq!(g.dora_revealed, 1);
+    // Chankan, pinfu and tanyao.
+    assert_eq!(win_of(&ev), vec![(2, 3, 30, 3900)]);
+}
+
+#[test]
 fn kuikae_forbids_the_called_tile_and_its_suji() {
     let mut g = game(["1119m1119p1119s4m", "4567m22p88p13s567z", "", ""], "7z");
     act(&mut g, 0, Action::Discard(t("4m")));

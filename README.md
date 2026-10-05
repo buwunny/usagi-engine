@@ -49,8 +49,39 @@ changes match, and (in hanchan logs) that each hand leads to the next one
 and the last hand ends the game with the logged final scores. It prints
 the first mismatch in each hand. `data/` is git-ignored.
 
+Besides single logs, both commands read archives of logs without
+unpacking them (`.tar`, `.tar.gz`, `.tar.zst`; the entries may be plain or
+gzip, bzip2 or zstd compressed) and SQLite databases in the phoenix-logs
+layout (`logs` table, bzip2 `log_content`), and replay on every core
+(`--threads N` to change that):
+
+```sh
+cargo run --release -p usagi-log --bin usagi-replay -- data/tenhou-original-xml.tar.zst
+```
+
+`--save DIR` writes every log that doesn't match to `DIR` for a closer
+look. Logs from before June 2010 are replayed with that era's game-end
+rule (no all-last dealer stop). Hands in which a player disconnected
+are counted apart when they differ, since Tenhou's play for a
+disconnected player doesn't follow the rules. Tenhou's logs are theirs: keep them under
+`data/` and never commit them.
+
 69 sample logs (424 hands) from the [mjx](https://github.com/mjx-project/mjx)
 project's tests run on every `cargo test`.
+
+The replayer only shows that the moves players made are legal. To check
+the full set of legal actions, replay the same logs through
+[riichienv-core](https://github.com/smly/RiichiEnv) side by side:
+
+```sh
+cargo run --release -p usagi-log --example compare-riichienv -- data/logs/2026-09
+```
+
+At every turn and call window it compares what each seat may do in both
+engines and prints each difference (riichienv-core is a test-only
+dependency). The sample logs get the same check on every `cargo test`.
+The 3,610 Houou games from September 2026 (2.35 million decision points)
+show no differences.
 
 ## Playing bots over Mjai
 

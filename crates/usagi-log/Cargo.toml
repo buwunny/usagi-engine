@@ -11,3 +11,13 @@ rust-version.workspace = true
 usagi-core.workspace = true
 usagi-engine.workspace = true
 flate2 = "1"
+tar = "0.4.46"
+zstd = "0.14.0"
+bzip2 = "0.6.1"
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+
+[dev-dependencies]
+# Reference engine for the legal-action comparison (Apache-2.0, test-only,
+# never shipped). Pinned exactly so a new release can't change results
+# silently.
+riichienv-core = "=0.4.10"

@@ -13,6 +13,10 @@
 //! of that, in hanchan logs the state after each hand must equal the next
 //! hand's start (round, honba, sticks, scores), and the last hand must end
 //! the game with the logged final scores.
+//!
+//! [`replay_with`] also reports every deal and every step to a callback,
+//! so another engine can be driven alongside (see the riichienv-core
+//! comparison in `examples/compare-riichienv.rs`).
 
 use std::fmt;
 
@@ -60,6 +64,12 @@ pub struct Report {
     /// The log stops partway through its last hand (an excerpt); that
     /// hand was checked up to where it stops.
     pub truncated: bool,
+    /// Hands that didn't match and in which a player disconnected. These
+    /// aren't counted as mismatches: Tenhou's play for a disconnected
+    /// player doesn't follow the rules (its discard right after a call
+    /// can break kuikae, and a disconnected player gets no nagashi
+    /// mangan).
+    pub disconnected: Vec<Mismatch>,
 }
 
 impl Report {
@@ -70,8 +80,65 @@ impl Report {
 
 type State = GameState<TenhouRules>;
 
+/// What [`replay_with`] reports while it replays.
+#[derive(Clone, Copy, Debug)]
+pub enum ReplayEvent<'a> {
+    /// Hand `hand` was dealt: `wall` is its wall in the engine's layout as
+    /// log tile ids (see [`build_wall_ids`]), `state` the engine right
+    /// after the deal.
+    Deal {
+        hand: usize,
+        init: &'a Init,
+        wall: &'a [TileId; WALL_SIZE],
+        state: &'a State,
+    },
+    /// `seat` is about to take `action` in `state`. Every engine step
+    /// is reported, including the passes the replayer fills in.
+    Step {
+        state: &'a State,
+        seat: u8,
+        action: Action,
+    },
+    /// The replayer is done with hand `hand`. `ended` is true when the
+    /// hand played to its logged end, false when the log stopped early or
+    /// a mismatch was found.
+    HandDone { hand: usize, ended: bool },
+}
+
+/// Rule differences of older logs that the engine doesn't play.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct Options {
+    /// Before June 2010 Tenhou had no all-last dealer stop: a repeating
+    /// dealer in South 4 (or the West round) played on even when first
+    /// with 30,000. The engine stops there, so with this set the replayer
+    /// accepts the log's next hand instead of reporting the game end.
+    pub no_dealer_stop: bool,
+}
+
+impl Options {
+    /// The options for a log named by its Tenhou id (`2009022022gm-...`),
+    /// which starts with the hour it was played. Names without one get
+    /// today's rules.
+    pub fn for_log_id(name: &str) -> Options {
+        let date = name.match_indices("gm-").find_map(|(i, _)| {
+            let d = name.get(i.checked_sub(10)?..i)?;
+            d.bytes().all(|b| b.is_ascii_digit()).then_some(d)
+        });
+        Options {
+            // The last game in the archive that played on is from
+            // 2010-06-01 06:00 JST.
+            no_dealer_stop: date.is_some_and(|d| d < "2010060200"),
+        }
+    }
+}
+
 /// Replays every hand of `game`.
 pub fn replay(game: &Game) -> Report {
+    replay_with(game, Options::default(), &mut |_| {})
+}
+
+/// Like [`replay`], with `opts`, reporting each deal and step to `on`.
+pub fn replay_with(game: &Game, opts: Options, on: &mut dyn FnMut(ReplayEvent)) -> Report {
     let mut report = Report::default();
     if !game.is_tenhou_ranked_rules() {
         report.mismatches.push(Mismatch {
@@ -99,7 +166,16 @@ pub fn replay(game: &Game) -> Report {
             event,
             message,
         };
-        match replay_hand(init, &events[1..], game.red_fives()) {
+        let result = replay_hand(h, init, &events[1..], game.red_fives(), on);
+        on(ReplayEvent::HandDone {
+            hand: h,
+            ended: matches!(result, Ok(Some(_))),
+        });
+        let disconnect = events
+            .iter()
+            .any(|e| matches!(e, LogEvent::Disconnect { .. }));
+        match result {
+            Err((event, message)) if disconnect => report.disconnected.push(at(event + 1, message)),
             Err((event, message)) => report.mismatches.push(at(event + 1, message)),
             Ok(None) if h + 1 == hands.len() => report.truncated = true,
             Ok(None) => report
@@ -111,7 +187,7 @@ pub fn replay(game: &Game) -> Report {
                     _ => unreachable!(),
                 });
                 let last = events.len();
-                if let Err(message) = check_flow(&state, next, final_scores(events)) {
+                if let Err(message) = check_flow(&state, next, final_scores(events), opts) {
                     report.mismatches.push(at(last, message));
                 }
             }
@@ -131,9 +207,28 @@ fn final_scores(events: &[LogEvent]) -> Option<[i32; 4]> {
 
 /// After a hand, the engine's next state must be the log's next `INIT`, or
 /// the end of the game with the logged final scores.
-fn check_flow(g: &State, next: Option<&Init>, owari: Option<[i32; 4]>) -> Result<(), String> {
+fn check_flow(
+    g: &State,
+    next: Option<&Init>,
+    owari: Option<[i32; 4]>,
+    opts: Options,
+) -> Result<(), String> {
     match (next, owari) {
         (Some(n), _) => {
+            let dealer_repeats = n.round == g.round.index && n.honba == g.round.honba;
+            if g.phase == Phase::GameEnd && opts.no_dealer_stop && dealer_repeats {
+                // The engine stopped on the dealer and handed the sticks
+                // to first place; the old rules played on. Points must
+                // still add up.
+                let total = |s: [i32; 4], sticks: u8| s.iter().sum::<i32>() + 1000 * sticks as i32;
+                if total(n.scores, n.sticks) != total(g.scores, g.riichi_sticks) {
+                    return Err(format!(
+                        "next hand: log scores {:?} + {} sticks, engine {:?} + {}",
+                        n.scores, n.sticks, g.scores, g.riichi_sticks
+                    ));
+                }
+                return Ok(());
+            }
             if g.phase == Phase::GameEnd {
                 return Err("engine ended the game but the log goes on".into());
             }
@@ -165,6 +260,15 @@ pub fn build_wall(
     events: &[LogEvent],
     red: bool,
 ) -> Result<[Tile; WALL_SIZE], (usize, String)> {
+    Ok(build_wall_ids(init, events)?.map(|id| tile_of(id, red)))
+}
+
+/// [`build_wall`] as log tile ids, which tell apart the four copies of a
+/// kind. Slots the log never shows get the unused ids in order.
+pub fn build_wall_ids(
+    init: &Init,
+    events: &[LogEvent],
+) -> Result<[TileId; WALL_SIZE], (usize, String)> {
     let mut slots: [Option<TileId>; WALL_SIZE] = [None; WALL_SIZE];
     let mut used = [false; 136];
     let mut put = |slot: usize, id: TileId, ev: usize| -> Result<(), (usize, String)> {
@@ -231,28 +335,32 @@ pub fn build_wall(
         }
     }
     let mut spare = (0..136u8).filter(|&id| !used[id as usize]);
-    let mut wall = [Tile::from_kind(0); WALL_SIZE];
-    for (w, s) in wall.iter_mut().zip(slots) {
-        let id = s.unwrap_or_else(|| spare.next().expect("136 slots, 136 ids"));
-        *w = tile_of(id, red);
-    }
-    Ok(wall)
+    Ok(slots.map(|s| s.unwrap_or_else(|| spare.next().expect("136 slots, 136 ids"))))
 }
 
 /// Plays one hand; `events` excludes the `INIT`. On failure, returns the
 /// index into `events` and what went wrong.
 /// `Ok(None)` means the log stopped before the hand ended.
 fn replay_hand(
+    hand: usize,
     init: &Init,
     events: &[LogEvent],
     red: bool,
+    on: &mut dyn FnMut(ReplayEvent),
 ) -> Result<Option<State>, (usize, String)> {
-    let wall = build_wall(init, events, red).map_err(|(i, m)| (i.saturating_sub(1), m))?;
+    let ids = build_wall_ids(init, events).map_err(|(i, m)| (i.saturating_sub(1), m))?;
+    let wall = ids.map(|id| tile_of(id, red));
     let round = Round {
         index: init.round,
         honba: init.honba,
     };
     let mut g = State::with_hand(round, init.sticks, init.scores, wall);
+    on(ReplayEvent::Deal {
+        hand,
+        init,
+        wall: &ids,
+        state: &g,
+    });
     let mut out: Vec<Event> = Vec::new();
     let mut riichi_next = [false; 4];
     let mut wins: Vec<&Agari> = Vec::new();
@@ -260,7 +368,16 @@ fn replay_hand(
 
     for (i, e) in events.iter().enumerate() {
         let fail = |m: String| (i, m);
-        let act = |g: &mut State, seat: u8, a: Action, out: &mut Vec<Event>| {
+        let act = |g: &mut State,
+                   seat: u8,
+                   a: Action,
+                   out: &mut Vec<Event>,
+                   on: &mut dyn FnMut(ReplayEvent)| {
+            on(ReplayEvent::Step {
+                state: g,
+                seat,
+                action: a,
+            });
             g.step(seat, a, out).map_err(|err| {
                 fail(format!(
                     "seat {seat} {a:?} rejected ({err:?}); legal: {:?}",
@@ -271,7 +388,7 @@ fn replay_hand(
         match e {
             LogEvent::Init(_) => return Err(fail("INIT inside a hand".into())),
             LogEvent::Draw { seat, tile } => {
-                pass_all(&mut g, &mut out).map_err(fail)?;
+                pass_all(&mut g, &mut out, on).map_err(fail)?;
                 let want = tile_of(*tile, red);
                 if g.phase != (Phase::Turn { seat: *seat }) {
                     return Err(fail(format!(
@@ -289,20 +406,28 @@ fn replay_hand(
             LogEvent::Discard { seat, tile } => {
                 let t = tile_of(*tile, red);
                 let s = *seat as usize;
-                let a = if riichi_next[s] {
+                // A few logs write the riichi declaration just after its
+                // discard instead of before it.
+                let late_riichi = matches!(
+                    events.get(i + 1),
+                    Some(LogEvent::Riichi { seat: r, step: 1 }) if r == seat
+                );
+                let a = if riichi_next[s] || late_riichi {
                     Action::Riichi(t)
                 } else {
                     Action::Discard(t)
                 };
                 riichi_next[s] = false;
-                act(&mut g, *seat, a, &mut out)?;
+                act(&mut g, *seat, a, &mut out, on)?;
             }
             LogEvent::Riichi { seat, step } => {
-                if *step == 1 {
+                let late = i > 0
+                    && matches!(&events[i - 1], LogEvent::Discard { seat: d, .. } if d == seat);
+                if *step == 1 && !late {
                     riichi_next[*seat as usize] = true;
                 }
             }
-            LogEvent::Dora { .. } => {}
+            LogEvent::Dora { .. } | LogEvent::Disconnect { .. } => {}
             LogEvent::Call { seat, call } => {
                 let hand: Vec<u8> = call
                     .from_hand()
@@ -333,12 +458,12 @@ fn replay_hand(
                         &legal[..]
                     )));
                 };
-                act(&mut g, *seat, a, &mut out)?;
+                act(&mut g, *seat, a, &mut out, on)?;
                 if matches!(
                     call.kind,
                     CallKind::Chi | CallKind::Pon | CallKind::Daiminkan
                 ) {
-                    pass_all(&mut g, &mut out).map_err(fail)?;
+                    pass_all(&mut g, &mut out, on).map_err(fail)?;
                 }
             }
             LogEvent::Agari(a) => {
@@ -347,10 +472,10 @@ fn replay_hand(
                 } else {
                     Action::Ron
                 };
-                act(&mut g, a.who, action, &mut out)?;
+                act(&mut g, a.who, action, &mut out, on)?;
                 wins.push(a);
                 if !matches!(events.get(i + 1), Some(LogEvent::Agari(_))) {
-                    pass_all(&mut g, &mut out).map_err(fail)?;
+                    pass_all(&mut g, &mut out, on).map_err(fail)?;
                 }
             }
             LogEvent::Ryuukyoku(r) => {
@@ -359,7 +484,7 @@ fn replay_hand(
                         let Phase::Turn { seat } = g.phase else {
                             return Err(fail(format!("kyuushu in phase {:?}", g.phase)));
                         };
-                        act(&mut g, seat, Action::Kyuushu, &mut out)?;
+                        act(&mut g, seat, Action::Kyuushu, &mut out, on)?;
                     }
                     DrawKind::Sanchahou => {
                         let ron: Vec<u8> = (0..4)
@@ -371,10 +496,10 @@ fn replay_hand(
                             )));
                         }
                         for s in ron {
-                            act(&mut g, s, Action::Ron, &mut out)?;
+                            act(&mut g, s, Action::Ron, &mut out, on)?;
                         }
                     }
-                    _ => pass_all(&mut g, &mut out).map_err(fail)?,
+                    _ => pass_all(&mut g, &mut out, on).map_err(fail)?,
                 }
                 check_hand_end(&g, &out, &[], r.deltas).map_err(fail)?;
                 over = true;
@@ -391,7 +516,10 @@ fn replay_hand(
             over = true;
         }
         if over {
-            if let Some(extra) = events.get(i + 1) {
+            if let Some(extra) = events[i + 1..]
+                .iter()
+                .find(|e| !matches!(e, LogEvent::Disconnect { .. }))
+            {
                 return Err((i + 1, format!("event after the hand ended: {extra:?}")));
             }
             return Ok(Some(g));
@@ -401,12 +529,21 @@ fn replay_hand(
 }
 
 /// Every seat still able to answer a call or chankan window passes.
-fn pass_all(g: &mut State, out: &mut Vec<Event>) -> Result<(), String> {
+fn pass_all(
+    g: &mut State,
+    out: &mut Vec<Event>,
+    on: &mut dyn FnMut(ReplayEvent),
+) -> Result<(), String> {
     while let Phase::CallWindow { pending, .. } | Phase::ChankanWindow { pending, .. } = g.phase {
         if pending == 0 {
             return Err(format!("window with nobody pending: {:?}", g.phase));
         }
         let seat = pending.trailing_zeros() as u8;
+        on(ReplayEvent::Step {
+            state: g,
+            seat,
+            action: Action::Pass,
+        });
         g.step(seat, Action::Pass, out)
             .map_err(|e| format!("seat {seat} can't pass: {e:?}"))?;
     }
@@ -473,4 +610,29 @@ fn check_hand_end(
         return Err(format!("deltas: log {log_deltas:?}, engine {deltas:?}"));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn options_follow_the_log_date() {
+        let old = Options {
+            no_dealer_stop: true,
+        };
+        assert_eq!(
+            Options::for_log_id("2009.db:2009022022gm-00a9-0000-cd94aac8"),
+            old
+        );
+        assert_eq!(
+            Options::for_log_id("x/2010060106gm-00a9-0000-30d6de3b.mjlog"),
+            old
+        );
+        assert_eq!(
+            Options::for_log_id("2026090100gm-00a9-0000-0c26afa2.mjlog.gz"),
+            Options::default()
+        );
+        assert_eq!(Options::for_log_id("double-ron.mjlog"), Options::default());
+    }
 }
