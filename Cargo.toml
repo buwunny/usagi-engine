@@ -1,0 +1,33 @@
+# The workspace: one repository, several small crates.
+# `cargo build` / `cargo test` at this level act on every member.
+[workspace]
+resolver = "3"
+members = [
+    "crates/usagi-core",
+    "crates/usagi-engine",
+    # Added in later milestones:
+    # "crates/usagi-log",    # M4 + M6
+    # "crates/usagi-obs",    # M7
+    # "crates/usagi-mjai",   # M8
+    # "crates/usagi-py",     # M8
+]
+
+# Settings every crate inherits with `version.workspace = true` etc.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/buwunny/usagi-engine"
+rust-version = "1.85"
+
+[workspace.dependencies]
+usagi-core = { path = "crates/usagi-core" }
+usagi-engine = { path = "crates/usagi-engine" }
+proptest = "1"
+
+# Tests run with optimizations so the brute-force checks in M2 finish quickly.
+[profile.test]
+opt-level = 2
+
+[profile.release]
+debug = 1 # keep symbols so flamegraphs are readable (M9)
