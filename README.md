@@ -10,9 +10,26 @@ training environment for the Kine AI.
 | --- | --- |
 | `mochitsuki-core` | Tiles, hand parsing, shanten (table-driven, with a slow reference), waits, hand decomposition, yaku, fu and payments. No game state. |
 | `mochitsuki-engine` | The game: wall, dealing, turns, calls, riichi, kans, furiten, abortive draws, scoring and the end of the game. |
+| `mochitsuki-mjai` | The Mjai protocol: a table that hosts four bots (in-process or child processes, mjai.app line protocol), and a rule-based baseline bot. |
 
-Log parsing and replay, observations, Mjai and the Python bindings come in
+Log parsing and replay, observations and the Python bindings come in
 later milestones.
+
+## Playing bots over Mjai
+
+```sh
+cargo build --release -p mochitsuki-mjai
+# Four baseline bots, ten games:
+target/release/mochitsuki-mjai play --games 10 baseline baseline baseline baseline
+# Any bot that speaks the mjai.app protocol (such as Mortal) can take a seat:
+target/release/mochitsuki-mjai play --log game.jsonl "./path/to/bot" baseline baseline baseline
+```
+
+The table sends each bot a JSON array of the events since its last turn
+(other seats' draws and hands hidden) and reads back one JSON action. The
+engine checks every answer, so an illegal move stops the game with the
+seat and the move. `mochitsuki-mjai bot` runs the baseline bot on
+stdin/stdout.
 
 ## Using the engine
 

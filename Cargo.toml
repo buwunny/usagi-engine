@@ -5,10 +5,10 @@ resolver = "3"
 members = [
     "crates/mochitsuki-core",
     "crates/mochitsuki-engine",
+    "crates/mochitsuki-mjai",
     # Added in later milestones:
     # "crates/mochitsuki-log",    # M4 + M6
     # "crates/mochitsuki-obs",    # M7
-    # "crates/mochitsuki-mjai",   # M8
     # "crates/mochitsuki-py",     # M8
 ]
 
