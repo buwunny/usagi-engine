@@ -670,7 +670,9 @@ impl<R: Rules> GameState<R> {
             out.push(Action::Ron);
         }
         let p = &self.players[seat as usize];
-        if !p.in_riichi() && self.tiles_left() > 0 {
+        // The discard after a fourth kan by two or more players can only be
+        // ronned: if nobody does, the hand is aborted.
+        if !p.in_riichi() && self.tiles_left() > 0 && !self.four_kans_abort() {
             let k = tile.kind();
             let n = p.hand[k as usize];
             if n >= 2 && self.has_discard_after_call(seat, &[k, k], [k, NO_KIND]) {
@@ -995,7 +997,7 @@ impl<R: Rules> GameState<R> {
             self.abort(AbortKind::SuuchaRiichi, events);
             return;
         }
-        if self.kan_count == 4 && !self.players.iter().any(|p| self.kans_of(p) == 4) {
+        if self.four_kans_abort() {
             self.abort(AbortKind::Suukaikan, events);
             return;
         }
@@ -1004,6 +1006,12 @@ impl<R: Rules> GameState<R> {
             return;
         }
         self.draw_live((from + 1) % 4, events);
+    }
+
+    /// Four kans, not all by one player: the hand ends unless the next
+    /// discard is ronned (suukaikan).
+    fn four_kans_abort(&self) -> bool {
+        self.kan_count == 4 && !self.players.iter().any(|p| self.kans_of(p) == 4)
     }
 
     fn kans_of(&self, p: &PlayerState) -> usize {
