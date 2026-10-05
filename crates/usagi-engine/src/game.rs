@@ -529,7 +529,9 @@ impl<R: Rules> GameState<R> {
         usagi_core::shanten::kokushi(&c) == -1
     }
 
-    fn is_furiten(&self, seat: u8) -> bool {
+    /// Whether `seat` may not ron right now: a wait is in its own river, or
+    /// it passed a winning tile this go-around or since its riichi.
+    pub fn is_furiten(&self, seat: u8) -> bool {
         let p = &self.players[seat as usize];
         if p.has(pf::TEMP_FURITEN) || p.has(pf::RIICHI_FURITEN) {
             return true;
@@ -622,8 +624,12 @@ impl<R: Rules> GameState<R> {
             out.push(Action::Discard(tile_from_code(p.drawn)));
             return;
         }
-        let riichi_ok =
-            p.is_closed() && self.scores[seat as usize] >= 1000 && self.tiles_left() >= 4;
+        // A discard can't lower shanten, so a 14-tile hand above tenpai has
+        // no riichi discard; checking that first skips 14 lookups.
+        let riichi_ok = p.is_closed()
+            && self.scores[seat as usize] >= 1000
+            && self.tiles_left() >= 4
+            && shanten(&self.counts(seat), p.meld_count) <= 0;
         for k in 0..NUM_KINDS as u8 {
             let (tiles, n) = self.distinct_tiles_of(seat, k);
             if n == 0 {
