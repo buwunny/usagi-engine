@@ -5,9 +5,9 @@ resolver = "3"
 members = [
     "crates/usagi-core",
     "crates/usagi-engine",
+    "crates/usagi-log",
     "crates/usagi-obs",
     # Added in later milestones:
-    # "crates/usagi-log",    # M4 + M6
     # "crates/usagi-mjai",   # M8
     # "crates/usagi-py",     # M8
 ]
@@ -23,6 +23,7 @@ rust-version = "1.85"
 [workspace.dependencies]
 usagi-core = { path = "crates/usagi-core" }
 usagi-engine = { path = "crates/usagi-engine" }
+usagi-log = { path = "crates/usagi-log" }
 usagi-obs = { path = "crates/usagi-obs" }
 proptest = "1"
 

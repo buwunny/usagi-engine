@@ -173,6 +173,23 @@ impl<R: Rules> GameState<R> {
         g
     }
 
+    /// A game dropped into the middle of a match: round `round` with these
+    /// scores and riichi sticks on the table, dealt from `wall`. Log replay
+    /// starts each hand this way, so one bad hand doesn't hide the rest.
+    pub fn with_hand(
+        round: Round,
+        riichi_sticks: u8,
+        scores: [i32; 4],
+        wall: [Tile; WALL_SIZE],
+    ) -> Self {
+        let mut g = Self::blank(0);
+        g.round = round;
+        g.riichi_sticks = riichi_sticks;
+        g.scores = scores;
+        g.deal(wall, &mut Vec::new());
+        g
+    }
+
     fn blank(seed: u64) -> Self {
         GameState {
             wall: [Tile::from_kind(0); WALL_SIZE],
@@ -1326,7 +1343,10 @@ impl<R: Rules> GameState<R> {
         let mut deltas = [0i32; 4];
         if nagashi != 0 {
             // Each nagashi mangan is paid like a mangan tsumo.
-            for s in self.seats_after(dealer + 3, nagashi) {
+            for s in (0..4)
+                .map(|i| (dealer + i) % 4)
+                .filter(|&s| nagashi & bit(s) != 0)
+            {
                 let pay = payment(2000, s == dealer, true);
                 let d = score_deltas(pay, s as usize, None, dealer as usize, 0, 0);
                 for i in 0..4 {
