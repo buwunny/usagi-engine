@@ -12,8 +12,9 @@ training environment for bunny bot.
 | `usagi-engine` | The game: wall, dealing, turns, calls, riichi, kans, furiten, abortive draws, scoring and the end of the game. |
 | `usagi-log` | Tenhou mjlog parser and a replayer that plays logged games through the engine and checks every action and score. |
 | `usagi-mjai` | The Mjai protocol: a table that hosts four bots (in-process or child processes, mjai.app line protocol), and a rule-based baseline bot. |
+| `usagi-obs` | One seat's observation as fixed-size feature planes (version 1), and a 155-way action numbering with legal-action masks. |
 
-Observations and the Python bindings come in later milestones.
+The Python bindings come in a later milestone.
 
 ## Replaying Tenhou logs
 
@@ -103,6 +104,8 @@ The tests include:
 - the table shanten compared with the reference on random hands,
 - hand-built rule scenarios (`crates/usagi-engine/tests/scenarios.rs`),
 - replay of the sample Tenhou logs (`crates/usagi-log/tests/replay_samples.rs`),
+- a leak test: shuffling every tile a seat can't see never changes its
+  observation (`crates/usagi-obs/tests/observation.rs`),
 - thousands of random and greedy games checking point conservation, tile
   conservation, hand sizes and determinism
   (`crates/usagi-engine/tests/invariants.rs`).

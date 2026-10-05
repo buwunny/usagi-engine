@@ -7,8 +7,8 @@ members = [
     "crates/usagi-engine",
     "crates/usagi-log",
     "crates/usagi-mjai",
+    "crates/usagi-obs",
     # Added in later milestones:
-    # "crates/usagi-obs",    # M7
     # "crates/usagi-py",     # M8
 ]
 
@@ -24,6 +24,7 @@ rust-version = "1.85"
 usagi-core = { path = "crates/usagi-core" }
 usagi-engine = { path = "crates/usagi-engine" }
 usagi-log = { path = "crates/usagi-log" }
+usagi-obs = { path = "crates/usagi-obs" }
 proptest = "1"
 
 # Tests run with optimizations so the brute-force checks in M2 finish quickly.
