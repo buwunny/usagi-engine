@@ -11,7 +11,12 @@ rust-version.workspace = true
 mochitsuki-core.workspace = true
 
 [dev-dependencies]
+criterion.workspace = true
 proptest.workspace = true
 # For engine-vs-engine tests (Apache-2.0, test-only, never shipped).
 # Pinned exactly so a new release can't change test results silently.
 # riichienv-core = "=0.4.10"
+
+[[bench]]
+name = "engine"
+harness = false

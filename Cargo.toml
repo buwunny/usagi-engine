@@ -24,6 +24,7 @@ rust-version = "1.85"
 mochitsuki-core = { path = "crates/mochitsuki-core" }
 mochitsuki-engine = { path = "crates/mochitsuki-engine" }
 proptest = "1"
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
 
 # Tests run with optimizations so the brute-force checks in M2 finish quickly.
 [profile.test]
