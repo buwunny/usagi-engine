@@ -18,6 +18,8 @@ use std::fmt::Write as _;
 
 use serde::{Deserialize, Serialize};
 
+use usagi_core::Tile;
+
 use crate::event::{Event, Pai};
 use crate::table::Bot;
 
@@ -204,7 +206,7 @@ impl Explanation {
         let mut s = String::new();
         let mut act = describe(&self.chosen);
         if let Some(p) = self.riichi_discard {
-            act = format!("{act} with {p}");
+            act = format!("{act}, discarding {}", name(p));
         }
         let _ = write!(s, "{act}.");
         for r in &self.reasons {
@@ -261,15 +263,15 @@ impl Explanation {
 
 fn describe(e: &Event) -> String {
     match e {
-        Event::Dahai { pai, .. } => format!("Discard {pai}"),
+        Event::Dahai { pai, .. } => format!("Discard {}", name(*pai)),
         Event::Reach { .. } => "Riichi".into(),
         Event::Hora { actor, target, .. } if actor == target => "Tsumo".into(),
         Event::Hora { .. } => "Ron".into(),
-        Event::Chi { pai, .. } => format!("Chi on {pai}"),
-        Event::Pon { pai, .. } => format!("Pon on {pai}"),
+        Event::Chi { pai, .. } => format!("Chi on {}", name(*pai)),
+        Event::Pon { pai, .. } => format!("Pon on {}", name(*pai)),
         Event::Ankan { consumed, .. } => format!(
             "Closed kan of {}",
-            consumed.first().map_or("?".into(), |p| p.to_string())
+            consumed.first().map_or("?".into(), |&p| name(p))
         ),
         Event::Ryukyoku { .. } => "Kyuushu kyuuhai".into(),
         Event::None => "Pass".into(),
@@ -278,10 +280,17 @@ fn describe(e: &Event) -> String {
 }
 
 fn list(ps: &[Pai]) -> String {
-    ps.iter()
-        .map(|p| p.to_string())
-        .collect::<Vec<_>>()
-        .join(" ")
+    ps.iter().map(|&p| name(p)).collect::<Vec<_>>().join(", ")
+}
+
+/// A tile as a person would say it: `5m`, `red 5p`, `West`, `White`.
+fn name(p: Pai) -> String {
+    const HONORS: [&str; 7] = ["East", "South", "West", "North", "White", "Green", "Red"];
+    match p.tile() {
+        Some(t) if t.kind() >= 27 => HONORS[(t.kind() - 27) as usize].to_string(),
+        Some(t) if t.is_red() => format!("red {}", Pai::from(Tile::from_kind(t.kind()))),
+        _ => p.to_string(),
+    }
 }
 
 fn seats(s: &[u8]) -> String {
