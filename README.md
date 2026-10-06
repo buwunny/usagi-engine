@@ -11,9 +11,35 @@ training environment for bunny bot.
 | `usagi-core` | Tiles, hand parsing, shanten (table-driven, with a slow reference), waits, hand decomposition, yaku, fu and payments. No game state. |
 | `usagi-engine` | The game: wall, dealing, turns, calls, riichi, kans, furiten, abortive draws, scoring and the end of the game. |
 | `usagi-log` | Tenhou mjlog parser and a replayer that plays logged games through the engine and checks every action and score. |
-| `usagi-mjai` | The Mjai protocol: a table that hosts four bots (in-process or child processes, mjai.app line protocol), and a rule-based baseline bot. |
+| `usagi-mjai` | The Mjai protocol: a table that hosts four bots (in-process or child processes, mjai.app line protocol), a rule-based baseline bot, rule bots at three levels (easy, normal, hard) that explain each move on request, and move hints for people. |
 | `usagi-obs` | One seat's observation as fixed-size feature planes (version 1), and a 155-way action numbering with legal-action masks. |
 | `usagi-py` | Python bindings (`import usagi`): `Game`, and `VecEnv` for many games stepped in parallel with NumPy outputs. |
+
+## Bots
+
+`usagi-mjai` has rule bots at three levels for usagi.club's empty seats.
+They need no model and decide in well under a millisecond, so a whole
+game of bot play costs a few tens of milliseconds of CPU.
+
+| Level | Plays like |
+| --- | --- |
+| easy | a beginner: often picks the wrong tile, never defends, calls whenever it can |
+| normal | tile efficiency, riichi when ready, folds against riichi unless ready, calls only for value honors |
+| hard | normal, plus wait shapes one draw ahead, dora kept, reads on open hands, safer tiles when pushing, calls for all simples |
+
+```sh
+cargo run --release -p usagi-mjai --example duel -- hard normal 3200
+# one hard vs three normal, 3200 games: average rank 2.433 (2.5 is even)
+cargo run --release -p usagi-mjai -- play hard normal normal normal --games 10
+```
+
+Every bot that implements `Explain` can say why it made its last move:
+an `Explanation` with the hand's shanten, acceptance and waits, each
+opponent's chance of being ready, each tile's deal-in chance, win chance,
+placement, the candidates it weighed and the reasons that decided it. It
+is built only when asked for. `suggest(level, events)` gives the same
+record for a person's seat, for hints. bunny bot will fill the same
+record from its own outputs.
 
 ## Python
 

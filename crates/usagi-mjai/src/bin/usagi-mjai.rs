@@ -1,13 +1,13 @@
 //! Mjai command line.
 //!
-//!     usagi-mjai bot
-//!         Runs the baseline bot over stdin/stdout (mjai.app protocol: one
-//!         JSON array of events per input line, one JSON action per output
-//!         line).
+//!     usagi-mjai bot [LEVEL]
+//!         Runs a bot over stdin/stdout (mjai.app protocol: one JSON array
+//!         of events per input line, one JSON action per output line):
+//!         the baseline bot, or the rule bot at LEVEL (easy, normal, hard).
 //!
 //!     usagi-mjai play [--seed N] [--games K] [--log FILE] BOT BOT BOT BOT
-//!         Hosts games for four bots, seat 0 first. Each BOT is `baseline`
-//!         (in-process) or a shell command that speaks the protocol, for
+//!         Hosts games for four bots, seat 0 first. Each BOT is `baseline`,
+//!         `easy`, `normal` or `hard` (in-process) or a shell command that speaks the protocol, for
 //!         example a Mortal mjai bot. Game i uses seed N + i. With --log,
 //!         every game's full Mjai log is written to FILE, one event per
 //!         line.
@@ -15,15 +15,15 @@
 use std::io::{BufRead, Write};
 use std::process::ExitCode;
 
-use usagi_mjai::{Baseline, Bot, Event, ProcessBot, play_game};
+use usagi_mjai::{Baseline, Bot, Event, Level, ProcessBot, RuleBot, play_game};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let result = match args.first().map(String::as_str) {
-        Some("bot") => run_bot(),
+        Some("bot") => run_bot(args.get(1).map(String::as_str)),
         Some("play") => play(&args[1..]),
         _ => Err(
-            "usage: usagi-mjai bot | play [--seed N] [--games K] [--log FILE] BOT BOT BOT BOT"
+            "usage: usagi-mjai bot [LEVEL] | play [--seed N] [--games K] [--log FILE] BOT BOT BOT BOT"
                 .into(),
         ),
     };
@@ -36,8 +36,14 @@ fn main() -> ExitCode {
     }
 }
 
-fn run_bot() -> Result<(), String> {
-    let mut bot = Baseline::new();
+fn run_bot(level: Option<&str>) -> Result<(), String> {
+    let mut bot: Box<dyn Bot> = match level {
+        None | Some("baseline") => Box::new(Baseline::new()),
+        Some(l) => Box::new(RuleBot::new(
+            Level::from_name(l).ok_or(format!("unknown level {l:?}"))?,
+            0,
+        )),
+    };
     let stdin = std::io::stdin();
     let mut stdout = std::io::stdout().lock();
     for line in stdin.lock().lines() {
@@ -83,6 +89,8 @@ fn play(args: &[String]) -> Result<(), String> {
         for spec in &specs {
             bots.push(if spec == "baseline" {
                 Box::new(Baseline::new())
+            } else if let Some(level) = Level::from_name(spec) {
+                Box::new(RuleBot::new(level, seed + i))
             } else {
                 Box::new(ProcessBot::spawn(spec).map_err(|e| format!("{spec}: {e}"))?)
             });
