@@ -1,6 +1,7 @@
 //! The rule bots play legal games at every level and can explain every
 //! move they make.
 
+use usagi_mjai::explain::Reason;
 use usagi_mjai::{Bot, Event, Explain, Level, RuleBot, play_game, suggest};
 
 /// Wraps a bot and checks its explanation after every decision.
@@ -132,6 +133,64 @@ fn normal_beats_easy() {
     }
     let avg = rank_sum as f64 / games as f64;
     assert!(avg < 1.9, "normal's average rank against easy: {avg}");
+}
+
+/// Counts riichi and quiet (damaten) choices from the explanations.
+struct Riichis {
+    bot: RuleBot,
+    declared: usize,
+    quiet: usize,
+}
+
+impl Bot for Riichis {
+    fn react(&mut self, events: &[Event]) -> Result<Event, String> {
+        let answer = self.bot.react(events)?;
+        if matches!(events, [Event::Reach { .. }]) {
+            return Ok(answer);
+        }
+        let Some(e) = self.bot.explain() else {
+            return Ok(answer);
+        };
+        let quiet = e.reasons.iter().any(|r| {
+            matches!(
+                r,
+                Reason::Dama { .. }
+                    | Reason::DeadWait
+                    | Reason::DamaUnderAttack
+                    | Reason::DamaToImprove { .. }
+            )
+        });
+        if quiet {
+            if !matches!(answer, Event::Dahai { .. }) {
+                return Err(format!("stayed quiet but played {answer:?}"));
+            }
+            self.quiet += 1;
+        }
+        self.declared += matches!(answer, Event::Reach { .. }) as usize;
+        Ok(answer)
+    }
+}
+
+#[test]
+fn hard_bots_sometimes_stay_quiet_instead_of_riichi() {
+    let (mut declared, mut quiet) = (0, 0);
+    for seed in 0..40u64 {
+        let mut bots: Vec<Riichis> = (0..4)
+            .map(|s| Riichis {
+                bot: RuleBot::new(Level::Hard, seed * 4 + s),
+                declared: 0,
+                quiet: 0,
+            })
+            .collect();
+        let [b0, b1, b2, b3] = &mut bots[..] else {
+            unreachable!()
+        };
+        play_game(900 + seed, [b0 as &mut dyn Bot, b1, b2, b3]).unwrap();
+        declared += bots.iter().map(|b| b.declared).sum::<usize>();
+        quiet += bots.iter().map(|b| b.quiet).sum::<usize>();
+    }
+    assert!(declared > 100, "only {declared} riichi");
+    assert!(quiet > 30, "only {quiet} quiet turns");
 }
 
 #[test]

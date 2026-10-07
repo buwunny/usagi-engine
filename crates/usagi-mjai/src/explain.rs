@@ -161,6 +161,13 @@ pub enum Reason {
     Riichi,
     /// Stayed quiet: the hand already has a yaku and enough value.
     Dama { value: u32 },
+    /// Stayed quiet: every winning tile is already gone.
+    DeadWait,
+    /// Stayed quiet with a yaku while another seat is in riichi.
+    DamaUnderAttack,
+    /// Stayed quiet with a yaku to wait for a better wait than `left`
+    /// tiles.
+    DamaToImprove { left: u32 },
     /// Called to make a value triplet (dragon or own/round wind).
     YakuhaiCall,
     /// Called for all simples.
@@ -244,6 +251,16 @@ impl Explanation {
                 Reason::Dama { value } => {
                     format!("It stays quiet: the hand already has a yaku and is worth {value}.")
                 }
+                Reason::DeadWait => {
+                    "It doesn't declare riichi: every winning tile is already out.".into()
+                }
+                Reason::DamaUnderAttack => {
+                    "It stays quiet against the riichi, so it can still fold.".into()
+                }
+                Reason::DamaToImprove { left } => format!(
+                    "It stays quiet to look for a better wait than {left} tile{}.",
+                    if *left == 1 { "" } else { "s" }
+                ),
                 Reason::YakuhaiCall => "The triplet is a yaku.".into(),
                 Reason::TanyaoCall => "It goes for all simples.".into(),
                 Reason::NoCall => "Calling wouldn't help the hand.".into(),

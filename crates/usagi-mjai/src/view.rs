@@ -252,6 +252,13 @@ impl View {
         score(&tiles, &self.my().melds, &ctx).map(|r| r.payment.total())
     }
 
+    /// This view with `t` gone from the hand, as after discarding it.
+    pub(crate) fn without(&self, t: Tile) -> View {
+        let mut w = self.clone();
+        w.remove(t);
+        w
+    }
+
     fn add(&mut self, t: Tile) {
         self.hand.add(t.kind());
         if t.is_red() {

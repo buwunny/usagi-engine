@@ -24,12 +24,12 @@ game of bot play costs a few tens of milliseconds of CPU.
 | Level | Plays like |
 | --- | --- |
 | easy | a beginner: often picks the wrong tile, never defends, calls whenever it can |
-| normal | tile efficiency, riichi when ready, folds against riichi unless ready, calls only for value honors |
-| hard | normal, plus wait shapes one draw ahead, dora kept, reads on open hands, safer tiles when pushing, calls for all simples |
+| normal | tile efficiency, riichi when ready (quiet with a yaku worth a mangan, or a dead wait), folds against riichi unless ready, calls only for value honors |
+| hard | normal, plus wait shapes one draw ahead, dora kept, reads on open hands, safer tiles when pushing, calls for all simples, and stays quiet with a yaku more often (5,200 or more, against a riichi, or to fix a thin wait early) |
 
 ```sh
 cargo run --release -p usagi-mjai --example duel -- hard normal 3200
-# one hard vs three normal, 3200 games: average rank 2.433 (2.5 is even)
+# one hard vs three normal, 3200 games: average rank 2.437 (2.5 is even)
 cargo run --release -p usagi-mjai -- play hard normal normal normal --games 10
 ```
 
