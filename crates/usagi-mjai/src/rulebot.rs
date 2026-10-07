@@ -4,11 +4,11 @@
 //! | Level | Plays like |
 //! | --- | --- |
 //! | [`Level::Easy`] | a beginner: goes for the lowest shanten but often picks the wrong tile, never defends, calls whenever it can |
-//! | [`Level::Normal`] | the baseline bot: tile efficiency, riichi when ready, folds against riichi unless ready, calls only for value honors |
-//! | [`Level::Hard`] | Normal, plus wait shapes one draw ahead, dora kept, reads on open hands, safer tiles when pushing, calls for all simples, closed kans and kyuushu |
+//! | [`Level::Normal`] | the baseline bot: tile efficiency, riichi when ready (quiet with a yaku and a mangan, or a dead wait), folds against riichi unless ready, calls only for value honors |
+//! | [`Level::Hard`] | Normal, plus wait shapes one draw ahead, dora kept, reads on open hands, safer tiles when pushing, calls for all simples, closed kans and kyuushu, and stays quiet with a yaku more often: 5,200 or more (7,700 as dealer), against a riichi, or to fix a thin wait early |
 //!
 //! In 3,200 games of one Hard against three Normal, Hard averages rank
-//! 2.43 (2.5 is even); one Normal against three Easy averages 1.47. Run
+//! 2.44 (2.5 is even); one Normal against three Easy averages 1.44. Run
 //! `cargo run --release -p usagi-mjai --example duel -- hard normal` to
 //! check.
 //!
@@ -438,10 +438,67 @@ impl Decider<'_> {
         after.remove(choice.kind());
         let ready = v.is_closed() && shanten(&after, v.meld_count()) == 0;
         if ready && v.my().score >= 1000 && v.tiles_left >= 4 {
-            self.note(Reason::Riichi);
-            return (Event::Reach { actor: me }, Some(choice));
+            match self.dama(choice, &after) {
+                Some(why) => self.note(why),
+                None => {
+                    self.note(Reason::Riichi);
+                    return (Event::Reach { actor: me }, Some(choice));
+                }
+            }
         }
         (self.dahai(choice), None)
+    }
+
+    /// Why to stay quiet (damaten) instead of declaring riichi with
+    /// `after` once `choice` is gone, or `None` to declare. Easy always
+    /// declares. Riichi locks the hand and tells everyone to fold, so it
+    /// pays when the hand needs it for a yaku or for value.
+    fn dama(&self, choice: Tile, after: &Counts) -> Option<Reason> {
+        if self.level == Level::Easy {
+            return None;
+        }
+        let v = self.v;
+        let wait = waits(after, v.meld_count());
+        let mut vis = self.visible_counts();
+        vis.0[choice.kind() as usize] += 1;
+        let left = left_of(&wait, after, &vis);
+        // Every winning tile is already out: riichi would only pay 1,000
+        // to lock a hand that can't win.
+        if left == 0 {
+            return Some(Reason::DeadWait);
+        }
+        // Without a ron on every wait, riichi is the yaku.
+        let quiet = v.without(choice);
+        if quiet.furiten() {
+            return None;
+        }
+        let mut value = u32::MAX;
+        for k in wait.iter() {
+            value = value.min(quiet.win_score(Tile::from_kind(k), false, false)?);
+        }
+        let dealer = v.is_dealer();
+        let enough = match (self.level, dealer) {
+            (Level::Hard, false) => 5200,
+            (Level::Hard, true) => 7700,
+            (_, false) => 8000,
+            (_, true) => 12000,
+        };
+        if value >= enough {
+            return Some(Reason::Dama { value });
+        }
+        if self.level != Level::Hard {
+            return None;
+        }
+        // Someone else declared: a quiet hand can still fold if it turns
+        // dangerous, and riichi adds little against a likely deal-in.
+        if (0..4).any(|s| s != v.me as usize && v.seats[s].in_riichi()) {
+            return Some(Reason::DamaUnderAttack);
+        }
+        // A thin wait with a yaku and time left: wait for a better one.
+        if left <= 4 && v.tiles_left >= 36 {
+            return Some(Reason::DamaToImprove { left });
+        }
+        None
     }
 
     /// Nine kinds: call it off unless the hand is close to thirteen
